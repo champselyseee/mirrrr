@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Проверка ЕГЭ</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --accent:    #667eea;
+            --accent2:   #764ba2;
+            --success:   #22c55e;
+            --warn:      #f59e0b;
+            --danger:    #ef4444;
+            --bg:        #667eea;
+            --card-bg:   #ffffff;
+            --text:      #1a1a2e;
+            --muted:     #94a3b8;
+            --border:    #e8ecf8;
+            --surface:   #f4f6ff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 16px 16px 32px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .screen { display: none; }
+        .screen.active { display: block; }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 28px 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            animation: slideUp 0.35s cubic-bezier(.22,.68,0,1.2) both;
+            box-shadow: 0 8px 32px rgba(102,126,234,.18);
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Header ── */
+        .header { text-align: center; margin-bottom: 24px; }
+        .header h1 { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 3px; }
+        .header p  { color: var(--muted); font-size: 13px; }
+
+        /* ── Section label ── */
+        .label {
+            font-size: 11px; font-weight: 700; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .7px; margin-bottom: 8px;
+        }
+        .label span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+        /* ── Work type cards ── */
+        .work-types { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+        .work-card {
+            background: var(--surface);
+            border-radius: 14px;
+            padding: 13px 14px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color .15s, box-shadow .15s, transform .12s;
+        }
+        .work-card:active { transform: scale(0.98); }
+        .work-card.selected {
+            border-color: var(--accent);
+            background: #f0f2ff;
+            box-shadow: 0 4px 16px rgba(102,126,234,.2);
+        }
+        .work-card-content { display: flex; align-items: center; gap: 12px; }
+        .wc-icon {
+            width: 38px; height: 38px; flex-shrink: 0;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 18px;
+        }
+        .wc-info { flex: 1; }
+        .wc-title    { color: var(--text); font-size: 14px; font-weight: 600; }
+        .wc-subtitle { color: var(--muted); font-size: 12px; margin-top: 1px; }
+        .wc-check    { color: var(--accent); font-size: 16px; opacity: 0; transition: opacity .15s; }
+        .work-card.selected .wc-check { opacity: 1; }
+
+        /* ── Upload zones ── */
+        .upload-zone {
+            flex: 1;
+            background: var(--surface);
+            border: 2px dashed #c8d0f0;
+            border-radius: 14px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .2s;
+        }
+        .upload-zone:hover { border-color: var(--accent); }
+        .upload-zone input { display: none; }
+        .upload-zone-icon { font-size: 20px; margin-bottom: 3px; }
+        .upload-zone-label { font-size: 13px; color: var(--accent); font-weight: 600; }
+
+        /* ── Photo grid ── */
+        .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+        .photo-thumb { position: relative; border-radius: 12px; overflow: hidden; background: var(--surface); }
+        .photo-thumb img { width: 100%; height: 120px; object-fit: cover; display: block; }
+        .thumb-remove {
+            position: absolute; top: 6px; right: 6px;
+            background: rgba(0,0,0,.55); color: #fff;
+            border: none; border-radius: 50%;
+            width: 26px; height: 26px; font-size: 13px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ── File preview ── */
+        .file-preview {
+            display: none; align-items: center; justify-content: space-between; gap: 10px;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+            padding: 11px 14px; margin-bottom: 14px;
+        }
+        .file-preview.show { display: flex; }
+        .file-preview-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-preview-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .file-remove {
+            background: rgba(0,0,0,.5); color: #fff; border: none; border-radius: 50%;
+            width: 26px; height: 26px; font-size: 13px; cursor: pointer; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ── Textarea ── */
+        .char-counter { text-align: right; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+        textarea {
+            width: 100%; min-height: 150px; padding: 13px 15px;
+            border: 2px solid var(--border); border-radius: 14px;
+            font-size: 14px; font-family: inherit; resize: vertical;
+            background: var(--surface); color: var(--text);
+            transition: border-color .2s; line-height: 1.55;
+        }
+        textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
+        textarea::placeholder { color: #c0c8e0; }
+
+        /* ── Buttons ── */
+        .btn-primary {
+            width: 100%; padding: 15px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: #fff; border: none; border-radius: 14px;
+            font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px;
+            transition: opacity .2s, transform .1s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+        .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+
+        .btn-secondary {
+            width: 100%; padding: 13px;
+            background: var(--surface); color: var(--accent);
+            border: 2px solid var(--border); border-radius: 14px;
+            font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;
+            transition: background .15s;
+        }
+        .btn-secondary:active { background: #e8ecf8; }
+
+        /* ── Error ── */
+        .error-msg {
+            background: #fef2f2; color: var(--danger);
+            border: 1px solid #fecaca;
+            padding: 11px 14px; border-radius: 12px;
+            margin-bottom: 14px; font-size: 13px;
+            text-align: center; display: none;
+        }
+        .error-msg.show { display: block; animation: shake .35s; }
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            25% { transform: translateX(-6px); }
+            75% { transform: translateX(6px); }
+        }
+
+        /* ── Loading ── */
+        .loading-card {
+            background: var(--card-bg);
+            border-radius: 24px; padding: 56px 24px;
+            max-width: 600px; margin: 0 auto; text-align: center;
+            animation: slideUp .35s ease-out;
+            box-shadow: 0 8px 32px rgba(102,126,234,.18);
+        }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 3px solid var(--border); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin .75s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+        .loading-sub   { font-size: 13px; color: var(--muted); line-height: 1.6; }
+        .dots::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%   { content: ''; }
+            25%  { content: '.'; }
+            50%  { content: '..'; }
+            75%  { content: '...'; }
+        }
+
+        /* ── No access ── */
+        .noaccess-card {
+            background: var(--card-bg); border-radius: 24px; padding: 48px 24px;
+            max-width: 600px; margin: 0 auto; text-align: center;
+            animation: slideUp .35s ease-out;
+            box-shadow: 0 8px 32px rgba(102,126,234,.18);
+        }
+        .noaccess-icon  { font-size: 48px; margin-bottom: 14px; }
+        .noaccess-title { font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+        .noaccess-sub   { font-size: 14px; color: var(--muted); line-height: 1.65; margin-bottom: 24px; }
+
+        /* ── Result ── */
+        .result-card {
+            background: var(--card-bg); border-radius: 24px; padding: 22px 18px;
+            max-width: 600px; margin: 0 auto; animation: slideUp .35s ease-out;
+            box-shadow: 0 8px 32px rgba(102,126,234,.18);
+        }
+        .score-hero {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 20px; padding: 26px 20px;
+            text-align: center; margin-bottom: 18px;
+        }
+        .score-hero-label { color: rgba(255,255,255,.75); font-size: 12px; margin-bottom: 6px; letter-spacing: .3px; }
+        .score-hero-num   {
+            font-size: 60px; font-weight: 800; color: #fff;
+            line-height: 1; letter-spacing: -2px;
+        }
+        .score-hero-max   { color: rgba(255,255,255,.6); font-size: 26px; font-weight: 400; }
+        .score-hero-type  { color: rgba(255,255,255,.8); font-size: 13px; margin-top: 8px; }
+
+        .criteria-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+            gap: 7px; margin-bottom: 18px;
+        }
+        .criteria-pill {
+            background: var(--surface); border-radius: 12px;
+            padding: 10px 6px; text-align: center;
+        }
+        .criteria-pill-name  { font-size: 10px; color: var(--muted); margin-bottom: 3px; font-weight: 600; }
+        .criteria-pill-score { font-size: 18px; font-weight: 800; }
+        .criteria-pill-max   { font-size: 10px; color: var(--muted); }
+
+        .result-section {
+            border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+            border-left: 4px solid var(--accent); background: var(--surface);
+        }
+        .result-section.warn  { border-left-color: var(--warn);    background: #fffbeb; }
+        .result-section.good  { border-left-color: var(--success);  background: #f0fdf4; }
+        .result-section.error { border-left-color: var(--danger);   background: #fef2f2; }
+
+        .result-section-title {
+            font-size: 11px; font-weight: 700; color: var(--accent);
+            margin-bottom: 7px; text-transform: uppercase; letter-spacing: .6px;
+        }
+        .result-section.warn  .result-section-title { color: #b45309; }
+        .result-section.good  .result-section-title { color: #15803d; }
+        .result-section.error .result-section-title { color: #b91c1c; }
+
+        .result-section-body {
+            font-size: 13.5px; line-height: 1.72; color: #2d3748; white-space: pre-wrap;
+        }
+
+        /* ── Btn spinner ── */
+        .btn-spinner {
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+            border-radius: 50%; animation: spin .65s linear infinite;
+            display: none;
+        }
+        .btn-primary.loading .btn-spinner { display: block; }
+        .btn-primary.loading .btn-label   { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- ЗАГРУЗКА -->
+<div id="checkingScreen" class="screen active">
+    <div class="loading-card">
+        <div class="spinner"></div>
+        <div class="loading-title" id="checkingTitle">Загружаем<span class="dots"></span></div>
+    </div>
+</div>
+
+<!-- НЕТ ДОСТУПА -->
+<div id="noAccessScreen" class="screen">
+    <div class="noaccess-card">
+        <div class="noaccess-icon">🔒</div>
+        <div class="noaccess-title">Нет доступа</div>
+        <div class="noaccess-sub" id="noAccessMsg">
+            Токен недействителен или истёк.<br>Вернись в бот и нажми кнопку снова.
+        </div>
+        <button class="btn-primary" onclick="tg.close()">
+            <span class="btn-label">Вернуться в бот</span>
+        </button>
+    </div>
+</div>
+
+<!-- ФОРМА -->
+<div id="formScreen" class="screen">
+    <div class="card">
+        <div class="header">
+            <h1>✍️ Проверка работы</h1>
+            <p>Тип → фото/файл → текст → проверить</p>
+        </div>
+
+        <div class="error-msg" id="errorMsg"></div>
+
+        <div class="label">Тип работы</div>
+        <div class="work-types">
+            <div class="work-card" data-type="email" onclick="selectWork('email')">
+                <div class="work-card-content">
+                    <div class="wc-icon">📧</div>
+                    <div class="wc-info">
+                        <div class="wc-title">Английский email</div>
+                        <div class="wc-subtitle">Задание 37 — личное письмо</div>
+                    </div>
+                    <div class="wc-check">✓</div>
+                </div>
+            </div>
+            <div class="work-card" data-type="essay" onclick="selectWork('essay')">
+                <div class="work-card-content">
+                    <div class="wc-icon">📝</div>
+                    <div class="wc-info">
+                        <div class="wc-title">Английское эссе</div>
+                        <div class="wc-subtitle">Задание 38 — письменное высказывание</div>
+                    </div>
+                    <div class="wc-check">✓</div>
+                </div>
+            </div>
+            <div class="work-card" data-type="composition" onclick="selectWork('composition')">
+                <div class="work-card-content">
+                    <div class="wc-icon">📖</div>
+                    <div class="wc-info">
+                        <div class="wc-title">Русское сочинение</div>
+                        <div class="wc-subtitle">Задание 27 — по тексту</div>
+                    </div>
+                    <div class="wc-check">✓</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="label">
+            Фото задания
+            <span> — до 2 фото, необязательно</span>
+        </div>
+        <div id="photoZone" style="display:flex;gap:10px;margin-bottom:12px">
+            <label class="upload-zone" style="flex:1">
+                <input type="file" accept="image/*" multiple onchange="handlePhotos(event)">
+                <div class="upload-zone-icon">🖼️</div>
+                <div class="upload-zone-label">Прикрепить 1–2 фото</div>
+            </label>
+        </div>
+        <div class="photo-grid" id="photosPreview" style="display:none"></div>
+
+        <div class="label">
+            Файл
+            <span> — TXT / PDF / DOCX, необязательно</span>
+        </div>
+        <div id="fileZone" style="display:flex;gap:10px;margin-bottom:12px">
+            <label class="upload-zone" style="flex:1">
+                <input type="file" accept=".txt,.md,.csv,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/*" onchange="handleFile(event)">
+                <div class="upload-zone-icon">📎</div>
+                <div class="upload-zone-label">Прикрепить файл</div>
+            </label>
+        </div>
+        <div class="file-preview" id="filePreview">
+            <div style="min-width:0">
+                <div class="file-preview-name" id="fileName"></div>
+                <div class="file-preview-meta" id="fileMeta"></div>
+            </div>
+            <button class="file-remove" onclick="removeFile()">✕</button>
+        </div>
+
+        <div class="label" style="margin-top:4px">Текст работы</div>
+        <div class="char-counter" id="charCounter">0 символов</div>
+        <textarea id="textInput" placeholder="Вставьте текст вашей работы сюда..." oninput="updateCounter()"></textarea>
+
+        <button class="btn-primary" id="submitBtn" onclick="submitWork()">
+            <span class="btn-label">Отправить на проверку</span>
+            <div class="btn-spinner"></div>
+        </button>
+    </div>
+</div>
+
+<!-- АНАЛИЗ -->
+<div id="loadingScreen" class="screen">
+    <div class="loading-card">
+        <div class="spinner"></div>
+        <div class="loading-title">Проверяем работу<span class="dots"></span></div>
+        <div class="loading-sub">ИИ анализирует текст по критериям ЕГЭ.<br>Обычно занимает 1–3 минуты.</div>
+    </div>
+</div>
+
+<!-- РЕЗУЛЬТАТ -->
+<div id="resultScreen" class="screen">
+    <div class="result-card">
+        <div class="score-hero">
+            <div class="score-hero-label">Итоговый балл</div>
+            <div class="score-hero-num">
+                <span id="scoreValue">—</span><span class="score-hero-max" id="scoreMax"></span>
+            </div>
+            <div class="score-hero-type" id="scoreType"></div>
+        </div>
+        <div class="criteria-grid" id="criteriaGrid" style="display:none"></div>
+        <div id="resultBody"></div>
+        <button class="btn-secondary" onclick="tg.close()">← Закрыть / получить новую кнопку</button>
+    </div>
+</div>
+
+<script>
+    // ── Config ──
+    const BACKEND_URL = 'https://boooot-production-6bee.up.railway.app';
+
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    tg.MainButton.hide();
+    document.body.style.backgroundColor = tg.themeParams.bg_color || '#667eea';
+
+    const urlToken = new URLSearchParams(window.location.search).get('token');
+
+    let selectedType  = null;
+    let photosBase64  = [];
+    let attachedFile  = null;
+    let submitAbort   = null;
+
+    // ── Screens ──
+    function showScreen(id) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        window.scrollTo(0, 0);
+    }
+
+    function showNoAccess(msg) {
+        document.getElementById('noAccessMsg').innerHTML = msg.replace(/\n/g, '<br>');
+        showScreen('noAccessScreen');
+    }
+
+    // ── Token check ──
+    async function checkToken() {
+        if (!urlToken) {
+            showNoAccess('Ссылка устарела или повреждена.\nНажми /start в боте для новой кнопки.');
+            return;
+        }
+        const titleEl = document.getElementById('checkingTitle');
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const res = await fetch(
+                    `${BACKEND_URL}/check_token?token=${urlToken}`,
+                    { signal: AbortSignal.timeout(20000) }
+                );
+                const data = await res.json();
+                if (data.ok) {
+                    showScreen('formScreen');
+                    return;
+                }
+                showNoAccess(
+                    'Сессия истекла или уже использована.\n' +
+                    'Новая кнопка придёт от бота автоматически после проверки.\n' +
+                    'Или нажми /start чтобы получить новую.'
+                );
+                return;
+            } catch (e) {
+                if (attempt < 2) {
+                    titleEl.innerHTML = `Сервер запускается (${attempt + 1}/2)<span class="dots"></span>`;
+                    await new Promise(r => setTimeout(r, 15000));
+                } else {
+                    showNoAccess(
+                        'Сервер не отвечает.\nЗакрой WebApp, подожди 30–60 сек и нажми кнопку снова.'
+                    );
+                }
+            }
+        }
+    }
+
+    checkToken();
+
+    // ── Work type ──
+    function selectWork(type) {
+        selectedType = type;
+        document.querySelectorAll('.work-card').forEach(c => c.classList.remove('selected'));
+        document.querySelector(`[data-type="${type}"]`).classList.add('selected');
+        if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function updateCounter() {
+        const len = document.getElementById('textInput').value.length;
+        document.getElementById('charCounter').textContent = `${len} символов`;
+    }
+
+    // ── Error ──
+    function showError(msg) {
+        const el = document.getElementById('errorMsg');
+        el.textContent = msg;
+        el.classList.add('show');
+        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+        setTimeout(() => el.classList.remove('show'), 4000);
+    }
+
+    // ── Photos ──
+    function resizeImageToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const img = new Image();
+                img.onload = () => {
+                    const MAX = 1200;
+                    let w = img.width, h = img.height;
+                    if (w > MAX || h > MAX) {
+                        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                        else       { w = Math.round(w * MAX / h); h = MAX; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', 0.82));
+                };
+                img.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+                img.src = ev.target.result;
+            };
+            reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handlePhotos(e) {
+        const files = Array.from(e.target.files || []).slice(0, 2);
+        if (!files.length) return;
+        try {
+            photosBase64 = [];
+            for (const file of files) photosBase64.push(await resizeImageToBase64(file));
+            renderPhotosPreview();
+        } catch (err) {
+            showError('❌ ' + err.message);
+        }
+    }
+
+    function renderPhotosPreview() {
+        const box = document.getElementById('photosPreview');
+        box.innerHTML = '';
+        photosBase64.forEach((src, idx) => {
+            const item = document.createElement('div');
+            item.className = 'photo-thumb';
+            item.innerHTML = `<img src="${src}" alt="Фото ${idx + 1}">
+                <button class="thumb-remove" onclick="removePhotoAt(${idx})">✕</button>`;
+            box.appendChild(item);
+        });
+        box.style.display = photosBase64.length ? 'grid' : 'none';
+        document.getElementById('photoZone').style.display = photosBase64.length >= 2 ? 'none' : 'flex';
+    }
+
+    function removePhotoAt(index) {
+        photosBase64.splice(index, 1);
+        document.querySelectorAll('#photoZone input[type=file]').forEach(i => i.value = '');
+        renderPhotosPreview();
+    }
+
+    // ── File ──
+    function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = ev => resolve(ev.target.result);
+            reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleFile(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 8 * 1024 * 1024) {
+            showError('⚠️ Файл слишком большой. Максимум 8 МБ');
+            e.target.value = '';
+            return;
+        }
+        try {
+            attachedFile = {
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                size: file.size,
+                data: await fileToDataUrl(file)
+            };
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileMeta').textContent = `${Math.ceil(file.size / 1024)} КБ`;
+            document.getElementById('filePreview').classList.add('show');
+            document.getElementById('fileZone').style.display = 'none';
+        } catch (err) {
+            showError('❌ ' + err.message);
+        }
+    }
+
+    function removeFile() {
+        attachedFile = null;
+        document.querySelectorAll('#fileZone input[type=file]').forEach(i => i.value = '');
+        document.getElementById('filePreview').classList.remove('show');
+        document.getElementById('fileZone').style.display = 'flex';
+    }
+
+    // ── Submit ──
+    function setSubmitting(on) {
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = on;
+        btn.classList.toggle('loading', on);
+    }
+
+    async function submitWork() {
+        const text = document.getElementById('textInput').value.trim();
+        if (!selectedType) { showError('⚠️ Выберите тип работы'); return; }
+        if (!text && !attachedFile && photosBase64.length === 0) {
+            showError('⚠️ Введите текст или прикрепите файл / фото');
+            return;
+        }
+        if (text && text.length < 50 && !attachedFile && photosBase64.length === 0) {
+            showError('⚠️ Текст слишком короткий (минимум 50 символов)');
+            return;
+        }
+
+        setSubmitting(true);
+        showScreen('loadingScreen');
+
+        submitAbort = new AbortController();
+        // 5 минут — xAI может долго думать
+        const timeoutId = setTimeout(() => submitAbort.abort(), 5 * 60 * 1000);
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/proxy`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: submitAbort.signal,
+                body: JSON.stringify({
+                    token:  urlToken,
+                    type:   selectedType,
+                    text:   text,
+                    photos: photosBase64,
+                    file:   attachedFile
+                })
+            });
+            clearTimeout(timeoutId);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+            renderResult(data.answer, selectedType);
+        } catch (e) {
+            clearTimeout(timeoutId);
+            setSubmitting(false);
+            showScreen('formScreen');
+            let msg = (e.message || '').toLowerCase();
+            let friendly = '';
+            if (msg.includes('invalid_token') || msg.includes('403')) {
+                friendly = 'Сессия истекла. Дождись новой кнопки от бота или нажми /start.';
+            } else if (msg.includes('xai error') || msg.includes('502')) {
+                friendly = 'ИИ временно недоступен. Попробуй через несколько минут.';
+            } else if (msg.includes('429')) {
+                friendly = 'Слишком много запросов. Попробуй через минуту.';
+            } else if (msg.includes('504') || msg.includes('timeout') || msg.includes('aborted')) {
+                friendly = 'Превышено время ожидания. Попробуй снова — иногда ИИ долго думает.';
+            } else if (msg.includes('empty_work')) {
+                friendly = 'Введи текст или прикрепи файл.';
+            } else if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('500')) {
+                friendly = 'Сервер не отвечает. Подожди 30–60 секунд и попробуй снова.';
+            } else {
+                friendly = e.message || 'Неизвестная ошибка. Попробуй снова.';
+            }
+            showError('❌ ' + friendly);
+        }
+    }
+
+    // ── Result parser & renderer ──
+    function parseScore(text) {
+        const patterns = [
+            /итог[:\s]+(\d+)\s*(?:баллов?)?\s*(?:из\s*(\d+))?/i,
+            /итого[:\s]+(\d+)\s*(?:из\s*(\d+))?/i,
+            /(\d+)\s*(?:баллов?)?\s*из\s*(\d+)/i,
+            /(\d+)\/(\d+)/,
+        ];
+        for (const re of patterns) {
+            const m = text.match(re);
+            if (m) return { score: parseInt(m[1]), max: m[2] ? parseInt(m[2]) : null };
+        }
+        return null;
+    }
+
+    function parseCriteria(text) {
+        const result = [];
+        // Ищем строки вида "К1 — ...: 2" или "К1: 2" или "К1 = 2"
+        const re = /К(\d+)[^:\n]*?[=:]\s*(\d+)\s*(?:\/\s*\d+)?/gm;
+        let m;
+        const seen = new Set();
+        while ((m = re.exec(text)) !== null) {
+            const k = parseInt(m[1]);
+            const s = parseInt(m[2]);
+            if (!seen.has(k) && s <= 10) {
+                seen.add(k);
+                result.push({ name: `К${k}`, score: s });
+            }
+        }
+        return result.length >= 2 ? result : [];
+    }
+
+    const MAX_SCORES = { 1:3, 2:3, 3:3, 4:3, 5:2, 6:1, 7:3, 8:3, 9:3, 10:3 };
+
+    function stripMarkdown(s) {
+        return s
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .replace(/\*(.+?)\*/g,   '$1')
+            .replace(/^#+\s*/gm, '')
+            .replace(/^---+$/gm, '')
+            .trim();
+    }
+
+    function sectionColor(title) {
+        const t = title.toLowerCase();
+        if (/рекоменд|улучш|совет/.test(t))               return 'warn';
+        if (/итог|вывод|резюм|хорошо|отлично|сильн/.test(t)) return 'good';
+        if (/ошибк|снижен|проблем|слаб/.test(t))          return 'error';
+        return '';
+    }
+
+    function renderResult(text, type) {
+        const body = document.getElementById('resultBody');
+        body.innerHTML = '';
+
+        // Score hero
+        const scoreData = parseScore(text);
+        const maxMap = { essay: 14, composition: 22, email: 6 };
+        const maxScore = (scoreData && scoreData.max) || maxMap[type] || '?';
+
+        document.getElementById('scoreValue').textContent = scoreData ? scoreData.score : '—';
+        document.getElementById('scoreMax').textContent   = scoreData ? `/${maxScore}` : '';
+        document.getElementById('scoreType').textContent  = {
+            essay: 'Задание 38 • Английский',
+            composition: 'Задание 27 • Русский',
+            email: 'Задание 37 • Английский'
+        }[type] || type;
+
+        if (scoreData) {
+            const pct = scoreData.score / maxScore;
+            const hero = document.querySelector('.score-hero');
+            if (pct >= 0.85)     hero.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
+            else if (pct >= 0.6) hero.style.background = 'linear-gradient(135deg,#667eea,#764ba2)';
+            else                 hero.style.background = 'linear-gradient(135deg,#dc2626,#b91c1c)';
+        }
+
+        // Criteria pills
+        const criteria = parseCriteria(text);
+        const grid = document.getElementById('criteriaGrid');
+        if (criteria.length) {
+            grid.style.display = 'grid';
+            grid.innerHTML = '';
+            criteria.forEach(({ name, score }) => {
+                const kNum = parseInt(name.replace('К', ''));
+                const mx = MAX_SCORES[kNum] || 3;
+                const pct = score / mx;
+                const color = pct >= 0.67 ? '#16a34a' : pct > 0 ? '#d97706' : '#dc2626';
+                const pill = document.createElement('div');
+                pill.className = 'criteria-pill';
+                pill.innerHTML = `<div class="criteria-pill-name">${name}</div>
+                    <div class="criteria-pill-score" style="color:${color}">${score}</div>
+                    <div class="criteria-pill-max">из ${mx}</div>`;
+                grid.appendChild(pill);
+            });
+        } else {
+            grid.style.display = 'none';
+        }
+
+        // Sections — split on emoji bullets first, then headers, then paragraphs
+        let sections = text.split(/(?=1️⃣|2️⃣|3️⃣|4️⃣|5️⃣|6️⃣)/);
+        if (sections.length <= 1)
+            sections = text.split(/\n(?=#{1,3}\s|К\d|[А-ЯA-Z][А-Яа-яA-Za-z\s]{2,25}:)/);
+        if (sections.length <= 1)
+            sections = text.split(/\n{2,}/);
+
+        sections.forEach(section => {
+            section = section.trim();
+            if (!section) return;
+            const lines = section.split('\n');
+            let title   = stripMarkdown(lines[0]);
+            let content = stripMarkdown(lines.slice(1).join('\n'));
+            if (title.length > 100) { content = stripMarkdown(section); title = ''; }
+            if (!content && !title) return;
+
+            const div = document.createElement('div');
+            const cc  = sectionColor(title);
+            div.className = 'result-section' + (cc ? ` ${cc}` : '');
+
+            if (title) {
+                const t = document.createElement('div');
+                t.className = 'result-section-title';
+                t.textContent = title;
+                div.appendChild(t);
+            }
+            const c = document.createElement('div');
+            c.className = 'result-section-body';
+            c.textContent = content || title;
+            div.appendChild(c);
+            body.appendChild(div);
+        });
+
+        showScreen('resultScreen');
+        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    }
+</script>
+</body>
+</html>
